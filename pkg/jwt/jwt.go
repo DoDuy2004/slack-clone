@@ -57,6 +57,8 @@ func (m *JWTManager) GenerateAccessToken(userID uuid.UUID, email string) (string
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(m.accessExpiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ID:        uuid.New().String(),
+			Issuer:    "slack-clone",
+			Audience:  []string{"slack-clone-client"},
 		},
 	}
 
@@ -73,6 +75,8 @@ func (m *JWTManager) GenerateRefreshToken(userID uuid.UUID, email string) (strin
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(m.refreshExpiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ID:        uuid.New().String(),
+			Issuer:    "slack-clone",
+			Audience:  []string{"slack-clone-client"},
 		},
 	}
 
@@ -102,4 +106,7 @@ func (m *JWTManager) VerifyToken(tokenString string) (*Claims, error) {
 	}
 
 	return claims, nil
+}
+func (m *JWTManager) GetAccessExpiry() time.Duration {
+	return m.accessExpiry
 }

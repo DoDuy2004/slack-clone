@@ -52,6 +52,10 @@ type Config struct {
 
 	// File Upload
 	MaxFileSize int64
+
+	// Cookie
+	CookieSecure   bool
+	CookieSameSite string
 }
 
 func Load() (*Config, error) {
@@ -88,6 +92,9 @@ func Load() (*Config, error) {
 		TURNPassword:  getEnv("TURN_PASSWORD", "turnpass"),
 
 		MaxFileSize: 52428800, // 50MB
+
+		CookieSecure:   getEnv("COOKIE_SECURE", "false") == "true",
+		CookieSameSite: getEnv("COOKIE_SAME_SITE", "lax"),
 	}
 
 	// Parse allowed origins

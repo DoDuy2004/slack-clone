@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/DoDuy2004/slack-clone/backend/internal/config"
 	"github.com/DoDuy2004/slack-clone/backend/internal/models/dto"
 	"github.com/DoDuy2004/slack-clone/backend/internal/service"
 	"github.com/gin-gonic/gin"
@@ -11,11 +12,13 @@ import (
 
 type AuthHandler struct {
 	authService service.AuthService
+	cfg         *config.Config
 }
 
-func NewAuthHandler(authService service.AuthService) *AuthHandler {
+func NewAuthHandler(authService service.AuthService, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
+		cfg:         cfg,
 	}
 }
 
@@ -76,8 +79,23 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 }
 
 func (h *AuthHandler) Refresh(c *gin.Context) {
-	// TODO: Implement refresh logic with token rotation
-	c.JSON(http.StatusOK, gin.H{"message": "Refresh endpoint - TODO"})
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token not found"})
+		return
+	}
+
+	tokens, err := h.authService.RefreshToken(refreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
+		return
+	}
+
+	h.setAuthCookies(c, tokens.AccessToken, tokens.RefreshToken)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Token refreshed successfully",
+	})
 }
 
 func (h *AuthHandler) setAuthCookies(c *gin.Context, accessToken, refreshToken string) {
@@ -88,8 +106,8 @@ func (h *AuthHandler) setAuthCookies(c *gin.Context, accessToken, refreshToken s
 		int(15*time.Minute.Seconds()), // 15 mins
 		"/",
 		"",
-		false, // Secure: set to true in production
-		true,  // HttpOnly
+		h.cfg.CookieSecure, // Use config
+		true,               // HttpOnly
 	)
 
 	// Set refresh token cookie
@@ -99,8 +117,8 @@ func (h *AuthHandler) setAuthCookies(c *gin.Context, accessToken, refreshToken s
 		int(7*24*time.Hour.Seconds()), // 7 days
 		"/",
 		"",
-		false, // Secure: set to true in production
-		true,  // HttpOnly
+		h.cfg.CookieSecure, // Use config
+		true,               // HttpOnly
 	)
 }
 

@@ -22,6 +22,7 @@ type AuthService interface {
 	Register(req *dto.RegisterRequest) (*models.User, error)
 	Login(req *dto.LoginRequest) (*models.User, *dto.TokenResponse, error)
 	GenerateTokens(user *models.User) (*dto.TokenResponse, error)
+	RefreshToken(refreshToken string) (*dto.TokenResponse, error)
 }
 
 type authService struct {
@@ -101,6 +102,27 @@ func (s *authService) GenerateTokens(user *models.User) (*dto.TokenResponse, err
 	return &dto.TokenResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		ExpiresAt:    time.Now().Add(15 * time.Minute), // Matching access expiry
+		ExpiresAt:    time.Now().Add(s.jwtManager.GetAccessExpiry()),
 	}, nil
+}
+
+func (s *authService) RefreshToken(refreshToken string) (*dto.TokenResponse, error) {
+	claims, err := s.jwtManager.VerifyToken(refreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	if claims.TokenType != "refresh" {
+		return nil, fmt.Errorf("invalid token type")
+	}
+
+	user, err := s.userRepo.FindByID(claims.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	return s.GenerateTokens(user)
 }

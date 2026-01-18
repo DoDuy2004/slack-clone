@@ -70,7 +70,7 @@ func main() {
 	authService := service.NewAuthService(userRepo, jwtManager)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(authService)
+	authHandler := handler.NewAuthHandler(authService, cfg)
 
 	// Create Gin router
 	router := gin.Default()
