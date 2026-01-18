@@ -69,12 +69,14 @@ func main() {
 	workspaceRepo := repository.NewWorkspaceRepository(db)
 	channelRepo := repository.NewChannelRepository(db)
 	messageRepo := repository.NewMessageRepository(db)
+	dmRepo := repository.NewDMRepository(db)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, jwtManager)
 	workspaceService := service.NewWorkspaceService(workspaceRepo)
 	channelService := service.NewChannelService(channelRepo, workspaceRepo)
-	messageService := service.NewMessageService(messageRepo, channelRepo, workspaceRepo)
+	messageService := service.NewMessageService(messageRepo, channelRepo, workspaceRepo, dmRepo)
+	dmService := service.NewDMService(dmRepo, workspaceRepo, userRepo)
 
 	// Initialize WebSocket Hub
 	hub := websocket.NewHub()
@@ -85,6 +87,7 @@ func main() {
 	workspaceHandler := handler.NewWorkspaceHandler(workspaceService)
 	channelHandler := handler.NewChannelHandler(channelService)
 	messageHandler := handler.NewMessageHandler(messageService, hub) // Inject hub
+	dmHandler := handler.NewDMHandler(dmService)
 	wsHandler := websocket.NewHandler(hub, jwtManager)
 
 	// Create Gin router
@@ -153,6 +156,10 @@ func main() {
 				// Channel routes within a workspace
 				workspaces.GET("/:workspace_id/channels", channelHandler.ListByWorkspace)
 				workspaces.POST("/:workspace_id/channels", channelHandler.Create)
+
+				// DM routes within a workspace
+				workspaces.GET("/:workspace_id/dms", dmHandler.List)
+				workspaces.POST("/:workspace_id/dms", dmHandler.GetOrCreate)
 			}
 
 			// Individual channel routes
@@ -164,7 +171,14 @@ func main() {
 
 				// Message routes within a channel
 				channels.GET("/:id/messages", messageHandler.ListByChannel)
-				channels.POST("/:id/messages", messageHandler.Send)
+				channels.POST("/:id/messages", messageHandler.SendChannel)
+			}
+
+			// Individual DM routes
+			dms := protected.Group("/dms")
+			{
+				dms.GET("/:id/messages", messageHandler.ListByDM)
+				dms.POST("/:id/messages", messageHandler.SendDM)
 			}
 
 			// Individual message actions

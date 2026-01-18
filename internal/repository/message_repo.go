@@ -12,6 +12,7 @@ type MessageRepository interface {
 	Create(message *models.Message) error
 	FindByID(id uuid.UUID) (*models.Message, error)
 	ListByChannelID(channelID uuid.UUID, limit, offset int) ([]*models.Message, error)
+	ListByDMID(dmID uuid.UUID, limit, offset int) ([]*models.Message, error)
 	ListReplies(parentID uuid.UUID) ([]*models.Message, error)
 	Update(message *models.Message) error
 	SoftDelete(id uuid.UUID) error
@@ -73,6 +74,51 @@ func (r *postgresMessageRepository) ListByChannelID(channelID uuid.UUID, limit, 
 		LIMIT $2 OFFSET $3
 	`
 	rows, err := r.db.Query(query, channelID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []*models.Message
+	for rows.Next() {
+		m := &models.Message{}
+		var username, fullName, avatarURL sql.NullString
+		if err := rows.Scan(
+			&m.ID, &m.Content, &m.SenderID, &m.ChannelID, &m.DMID, &m.ParentMessageID, &m.EditedAt, &m.DeletedAt, &m.CreatedAt, &m.UpdatedAt,
+			&username, &avatarURL, &fullName, &m.ReplyCount,
+		); err != nil {
+			return nil, err
+		}
+
+		if username.Valid {
+			m.Sender = &models.User{
+				ID:       *m.SenderID,
+				Username: username.String,
+			}
+			if avatarURL.Valid {
+				m.Sender.AvatarURL = &avatarURL.String
+			}
+			if fullName.Valid {
+				m.Sender.FullName = &fullName.String
+			}
+		}
+		messages = append(messages, m)
+	}
+	return messages, nil
+}
+
+func (r *postgresMessageRepository) ListByDMID(dmID uuid.UUID, limit, offset int) ([]*models.Message, error) {
+	query := `
+		SELECT m.id, m.content, m.sender_id, m.channel_id, m.dm_id, m.parent_message_id, m.edited_at, m.deleted_at, m.created_at, m.updated_at,
+		       u.username, u.avatar_url, u.full_name,
+		       (SELECT COUNT(*) FROM messages WHERE parent_message_id = m.id) as reply_count
+		FROM messages m
+		LEFT JOIN users u ON m.sender_id = u.id
+		WHERE m.dm_id = $1 AND m.parent_message_id IS NULL
+		ORDER BY m.created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+	rows, err := r.db.Query(query, dmID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

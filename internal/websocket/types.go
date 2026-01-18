@@ -23,6 +23,7 @@ type WSMessage struct {
 	Payload     json.RawMessage `json:"payload"`
 	WorkspaceID *uuid.UUID      `json:"workspace_id,omitempty"`
 	ChannelID   *uuid.UUID      `json:"channel_id,omitempty"`
+	DMID        *uuid.UUID      `json:"dm_id,omitempty"`
 	UserID      *uuid.UUID      `json:"user_id,omitempty"`
 }
 

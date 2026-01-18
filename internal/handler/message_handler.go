@@ -24,7 +24,7 @@ func NewMessageHandler(messageService service.MessageService, hub *websocket.Hub
 	}
 }
 
-func (h *MessageHandler) Send(c *gin.Context) {
+func (h *MessageHandler) SendChannel(c *gin.Context) {
 	userIDStr, _ := c.Get("user_id")
 	userID := userIDStr.(uuid.UUID)
 
@@ -41,7 +41,7 @@ func (h *MessageHandler) Send(c *gin.Context) {
 		return
 	}
 
-	message, err := h.messageService.SendMessage(userID, channelID, &req)
+	message, err := h.messageService.SendChannelMessage(userID, channelID, &req)
 	if err != nil {
 		if err == service.ErrUnauthorized {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
@@ -62,6 +62,44 @@ func (h *MessageHandler) Send(c *gin.Context) {
 	c.JSON(http.StatusCreated, message)
 }
 
+func (h *MessageHandler) SendDM(c *gin.Context) {
+	userIDStr, _ := c.Get("user_id")
+	userID := userIDStr.(uuid.UUID)
+
+	dmIDStr := c.Param("id")
+	dmID, err := uuid.Parse(dmIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid DM ID"})
+		return
+	}
+
+	var req dto.CreateMessageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	message, err := h.messageService.SendDMMessage(userID, dmID, &req)
+	if err != nil {
+		if err == service.ErrUnauthorized {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Broadcast via WebSocket
+	payload, _ := json.Marshal(message)
+	h.hub.Broadcast(&websocket.WSMessage{
+		Type:    websocket.EventMessageNew,
+		Payload: payload,
+		DMID:    message.DMID,
+	})
+
+	c.JSON(http.StatusCreated, message)
+}
+
 func (h *MessageHandler) ListByChannel(c *gin.Context) {
 	userIDStr, _ := c.Get("user_id")
 	userID := userIDStr.(uuid.UUID)
@@ -77,6 +115,33 @@ func (h *MessageHandler) ListByChannel(c *gin.Context) {
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
 	messages, err := h.messageService.GetChannelMessages(userID, channelID, limit, offset)
+	if err != nil {
+		if err == service.ErrUnauthorized {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, messages)
+}
+
+func (h *MessageHandler) ListByDM(c *gin.Context) {
+	userIDStr, _ := c.Get("user_id")
+	userID := userIDStr.(uuid.UUID)
+
+	dmIDStr := c.Param("id")
+	dmID, err := uuid.Parse(dmIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid DM ID"})
+		return
+	}
+
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+
+	messages, err := h.messageService.GetDMMessages(userID, dmID, limit, offset)
 	if err != nil {
 		if err == service.ErrUnauthorized {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})

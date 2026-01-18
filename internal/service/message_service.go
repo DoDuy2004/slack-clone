@@ -14,32 +14,37 @@ var (
 )
 
 type MessageService interface {
-	SendMessage(userID uuid.UUID, channelID uuid.UUID, req *dto.CreateMessageRequest) (*models.Message, error)
 	GetChannelMessages(userID uuid.UUID, channelID uuid.UUID, limit, offset int) ([]*models.Message, error)
+	GetDMMessages(userID uuid.UUID, dmID uuid.UUID, limit, offset int) ([]*models.Message, error)
 	GetThreads(userID uuid.UUID, parentID uuid.UUID) ([]*models.Message, error)
 	UpdateMessage(userID uuid.UUID, messageID uuid.UUID, req *dto.UpdateMessageRequest) (*models.Message, error)
 	DeleteMessage(userID uuid.UUID, messageID uuid.UUID) error
+	SendChannelMessage(userID uuid.UUID, channelID uuid.UUID, req *dto.CreateMessageRequest) (*models.Message, error)
+	SendDMMessage(userID uuid.UUID, dmID uuid.UUID, req *dto.CreateMessageRequest) (*models.Message, error)
 }
 
 type messageService struct {
 	messageRepo   repository.MessageRepository
 	channelRepo   repository.ChannelRepository
 	workspaceRepo repository.WorkspaceRepository
+	dmRepo        repository.DMRepository
 }
 
 func NewMessageService(
 	messageRepo repository.MessageRepository,
 	channelRepo repository.ChannelRepository,
 	workspaceRepo repository.WorkspaceRepository,
+	dmRepo repository.DMRepository,
 ) MessageService {
 	return &messageService{
 		messageRepo:   messageRepo,
 		channelRepo:   channelRepo,
 		workspaceRepo: workspaceRepo,
+		dmRepo:        dmRepo,
 	}
 }
 
-func (s *messageService) SendMessage(userID uuid.UUID, channelID uuid.UUID, req *dto.CreateMessageRequest) (*models.Message, error) {
+func (s *messageService) SendChannelMessage(userID uuid.UUID, channelID uuid.UUID, req *dto.CreateMessageRequest) (*models.Message, error) {
 	// Verify channel membership
 	isMember, err := s.channelRepo.IsMember(channelID, userID)
 	if err != nil {
@@ -125,6 +130,44 @@ func (s *messageService) GetChannelMessages(userID uuid.UUID, channelID uuid.UUI
 	}
 
 	return s.messageRepo.ListByChannelID(channelID, limit, offset)
+}
+
+func (s *messageService) SendDMMessage(userID uuid.UUID, dmID uuid.UUID, req *dto.CreateMessageRequest) (*models.Message, error) {
+	// 1. Verify user is participant in DM
+	isParticipant, err := s.dmRepo.IsParticipant(dmID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !isParticipant {
+		return nil, ErrUnauthorized
+	}
+
+	message := &models.Message{
+		ID:              uuid.New(),
+		Content:         req.Content,
+		SenderID:        &userID,
+		DMID:            &dmID,
+		ParentMessageID: req.ParentMessageID,
+	}
+
+	if err := s.messageRepo.Create(message); err != nil {
+		return nil, err
+	}
+
+	return message, nil
+}
+
+func (s *messageService) GetDMMessages(userID uuid.UUID, dmID uuid.UUID, limit, offset int) ([]*models.Message, error) {
+	// 1. Verify user is participant
+	isParticipant, err := s.dmRepo.IsParticipant(dmID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !isParticipant {
+		return nil, ErrUnauthorized
+	}
+
+	return s.messageRepo.ListByDMID(dmID, limit, offset)
 }
 
 func (s *messageService) GetThreads(userID uuid.UUID, parentID uuid.UUID) ([]*models.Message, error) {
