@@ -16,6 +16,7 @@ import (
 	"github.com/DoDuy2004/slack-clone/backend/internal/service"
 	"github.com/DoDuy2004/slack-clone/backend/internal/websocket"
 	"github.com/DoDuy2004/slack-clone/backend/pkg/jwt"
+	"github.com/DoDuy2004/slack-clone/backend/pkg/storage"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -71,14 +72,24 @@ func main() {
 	messageRepo := repository.NewMessageRepository(db)
 	dmRepo := repository.NewDMRepository(db)
 	reactionRepo := repository.NewReactionRepository(db)
+	attachmentRepo := repository.NewAttachmentRepository(db)
+
+	// Initialize Storage
+	uploadDir := "./uploads"
+	baseURL := fmt.Sprintf("http://localhost:%s", cfg.Port) // In production, use real domain
+	storageService, err := storage.NewLocalStorage(uploadDir, baseURL)
+	if err != nil {
+		log.Fatal("Failed to initialize storage:", err)
+	}
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, jwtManager)
 	workspaceService := service.NewWorkspaceService(workspaceRepo)
 	channelService := service.NewChannelService(channelRepo, workspaceRepo)
-	messageService := service.NewMessageService(messageRepo, channelRepo, workspaceRepo, dmRepo)
+	messageService := service.NewMessageService(messageRepo, channelRepo, workspaceRepo, dmRepo, attachmentRepo)
 	dmService := service.NewDMService(dmRepo, workspaceRepo, userRepo)
 	reactionService := service.NewReactionService(reactionRepo, messageRepo, channelRepo, dmRepo, workspaceRepo)
+	fileService := service.NewFileService(attachmentRepo, storageService)
 
 	// Initialize WebSocket Hub
 	hub := websocket.NewHub()
@@ -93,6 +104,7 @@ func main() {
 	messageHandler := handler.NewMessageHandler(messageService, hub) // Inject hub
 	dmHandler := handler.NewDMHandler(dmService)
 	reactionHandler := handler.NewReactionHandler(reactionService, messageService, hub)
+	fileHandler := handler.NewFileHandler(fileService)
 	wsHandler := websocket.NewHandler(hub, jwtManager, presenceService)
 
 	// Create Gin router
@@ -199,6 +211,10 @@ func main() {
 			}
 		}
 	}
+
+	// File routes
+	router.POST("/api/files/upload", middleware.AuthMiddleware(jwtManager), fileHandler.Upload)
+	router.Static("/uploads", "./uploads")
 
 	// WebRTC signaling endpoint
 	router.GET("/webrtc/signaling", func(c *gin.Context) {

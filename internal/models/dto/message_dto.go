@@ -7,8 +7,9 @@ import (
 )
 
 type CreateMessageRequest struct {
-	Content         string     `json:"content" binding:"required,min=1"`
-	ParentMessageID *uuid.UUID `json:"parent_message_id,omitempty"`
+	Content         string      `json:"content" binding:"required,min=1"`
+	ParentMessageID *uuid.UUID  `json:"parent_message_id,omitempty"`
+	AttachmentIDs   []uuid.UUID `json:"attachment_ids,omitempty"`
 }
 
 type UpdateMessageRequest struct {

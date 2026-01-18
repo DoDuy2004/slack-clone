@@ -41,7 +41,7 @@ func (h *MessageHandler) SendChannel(c *gin.Context) {
 		return
 	}
 
-	message, err := h.messageService.SendChannelMessage(userID, channelID, &req)
+	message, err := h.messageService.SendChannelMessage(userID, channelID, req.Content, req.ParentMessageID, req.AttachmentIDs)
 	if err != nil {
 		if err == service.ErrUnauthorized {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
@@ -79,7 +79,7 @@ func (h *MessageHandler) SendDM(c *gin.Context) {
 		return
 	}
 
-	message, err := h.messageService.SendDMMessage(userID, dmID, &req)
+	message, err := h.messageService.SendDMMessage(userID, dmID, req.Content, req.AttachmentIDs)
 	if err != nil {
 		if err == service.ErrUnauthorized {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})

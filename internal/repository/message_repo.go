@@ -170,6 +170,9 @@ func (r *postgresMessageRepository) ListByDMID(dmID uuid.UUID, limit, offset int
 		if err := r.attachReactions(messages); err != nil {
 			return nil, err
 		}
+		if err := r.attachAttachments(messages); err != nil {
+			return nil, err
+		}
 	}
 
 	return messages, nil
@@ -181,7 +184,8 @@ func (r *postgresMessageRepository) attachReactions(messages []*models.Message) 
 	for i, m := range messages {
 		messageIDs[i] = m.ID
 		msgMap[m.ID] = m
-		m.Reactions = []models.Reaction{} // Initialize
+		m.Reactions = []models.Reaction{}     // Initialize
+		m.Attachments = []models.Attachment{} // Initialize
 	}
 
 	query := `
@@ -210,6 +214,40 @@ func (r *postgresMessageRepository) attachReactions(messages []*models.Message) 
 		re.User.ID = re.UserID
 		if m, ok := msgMap[re.MessageID]; ok {
 			m.Reactions = append(m.Reactions, re)
+		}
+	}
+	return nil
+}
+
+func (r *postgresMessageRepository) attachAttachments(messages []*models.Message) error {
+	messageIDs := make([]uuid.UUID, len(messages))
+	msgMap := make(map[uuid.UUID]*models.Message)
+	for i, m := range messages {
+		messageIDs[i] = m.ID
+		msgMap[m.ID] = m
+	}
+
+	query := `
+		SELECT id, message_id, file_name, file_url, file_type, file_size, uploaded_at
+		FROM attachments
+		WHERE message_id = ANY($1)
+		ORDER BY uploaded_at ASC
+	`
+	rows, err := r.db.Query(query, messageIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		a := models.Attachment{}
+		if err := rows.Scan(
+			&a.ID, &a.MessageID, &a.FileName, &a.FileURL, &a.FileType, &a.FileSize, &a.UploadedAt,
+		); err != nil {
+			return err
+		}
+		if m, ok := msgMap[a.MessageID]; ok {
+			m.Attachments = append(m.Attachments, a)
 		}
 	}
 	return nil

@@ -19,15 +19,16 @@ type MessageService interface {
 	GetThreads(userID uuid.UUID, parentID uuid.UUID) ([]*models.Message, error)
 	UpdateMessage(userID uuid.UUID, messageID uuid.UUID, req *dto.UpdateMessageRequest) (*models.Message, error)
 	DeleteMessage(userID uuid.UUID, messageID uuid.UUID) error
-	SendChannelMessage(userID uuid.UUID, channelID uuid.UUID, req *dto.CreateMessageRequest) (*models.Message, error)
-	SendDMMessage(userID uuid.UUID, dmID uuid.UUID, req *dto.CreateMessageRequest) (*models.Message, error)
+	SendChannelMessage(userID, channelID uuid.UUID, content string, parentID *uuid.UUID, attachmentIDs []uuid.UUID) (*models.Message, error)
+	SendDMMessage(userID, dmID uuid.UUID, content string, attachmentIDs []uuid.UUID) (*models.Message, error)
 }
 
 type messageService struct {
-	messageRepo   repository.MessageRepository
-	channelRepo   repository.ChannelRepository
-	workspaceRepo repository.WorkspaceRepository
-	dmRepo        repository.DMRepository
+	messageRepo    repository.MessageRepository
+	channelRepo    repository.ChannelRepository
+	workspaceRepo  repository.WorkspaceRepository
+	dmRepo         repository.DMRepository
+	attachmentRepo repository.AttachmentRepository
 }
 
 func NewMessageService(
@@ -35,16 +36,18 @@ func NewMessageService(
 	channelRepo repository.ChannelRepository,
 	workspaceRepo repository.WorkspaceRepository,
 	dmRepo repository.DMRepository,
+	attachmentRepo repository.AttachmentRepository,
 ) MessageService {
 	return &messageService{
-		messageRepo:   messageRepo,
-		channelRepo:   channelRepo,
-		workspaceRepo: workspaceRepo,
-		dmRepo:        dmRepo,
+		messageRepo:    messageRepo,
+		channelRepo:    channelRepo,
+		workspaceRepo:  workspaceRepo,
+		dmRepo:         dmRepo,
+		attachmentRepo: attachmentRepo,
 	}
 }
 
-func (s *messageService) SendChannelMessage(userID uuid.UUID, channelID uuid.UUID, req *dto.CreateMessageRequest) (*models.Message, error) {
+func (s *messageService) SendChannelMessage(userID, channelID uuid.UUID, content string, parentID *uuid.UUID, attachmentIDs []uuid.UUID) (*models.Message, error) {
 	// Verify channel membership
 	isMember, err := s.channelRepo.IsMember(channelID, userID)
 	if err != nil {
@@ -75,8 +78,8 @@ func (s *messageService) SendChannelMessage(userID uuid.UUID, channelID uuid.UUI
 	}
 
 	// If it's a reply, verify parent exists and belongs to the same channel
-	if req.ParentMessageID != nil {
-		parent, err := s.messageRepo.FindByID(*req.ParentMessageID)
+	if parentID != nil {
+		parent, err := s.messageRepo.FindByID(*parentID)
 		if err != nil {
 			return nil, err
 		}
@@ -87,14 +90,31 @@ func (s *messageService) SendChannelMessage(userID uuid.UUID, channelID uuid.UUI
 
 	message := &models.Message{
 		ID:              uuid.New(),
-		Content:         req.Content,
+		Content:         content,
 		SenderID:        &userID,
 		ChannelID:       &channelID,
-		ParentMessageID: req.ParentMessageID,
+		ParentMessageID: parentID,
 	}
 
 	if err := s.messageRepo.Create(message); err != nil {
 		return nil, err
+	}
+
+	// Link attachments
+	for _, attachmentID := range attachmentIDs {
+		if err := s.attachmentRepo.LinkToMessage(attachmentID, message.ID); err != nil {
+			// Log error but don't fail message creation?
+			// In production, we might want to use a transaction.
+		}
+	}
+
+	// Fetch attachments for the response
+	if len(attachmentIDs) > 0 {
+		attachments, _ := s.attachmentRepo.ListByMessageID(message.ID)
+		message.Attachments = []models.Attachment{}
+		for _, a := range attachments {
+			message.Attachments = append(message.Attachments, *a)
+		}
 	}
 
 	return message, nil
@@ -132,7 +152,7 @@ func (s *messageService) GetChannelMessages(userID uuid.UUID, channelID uuid.UUI
 	return s.messageRepo.ListByChannelID(channelID, limit, offset)
 }
 
-func (s *messageService) SendDMMessage(userID uuid.UUID, dmID uuid.UUID, req *dto.CreateMessageRequest) (*models.Message, error) {
+func (s *messageService) SendDMMessage(userID, dmID uuid.UUID, content string, attachmentIDs []uuid.UUID) (*models.Message, error) {
 	// 1. Verify user is participant in DM
 	isParticipant, err := s.dmRepo.IsParticipant(dmID, userID)
 	if err != nil {
@@ -143,15 +163,28 @@ func (s *messageService) SendDMMessage(userID uuid.UUID, dmID uuid.UUID, req *dt
 	}
 
 	message := &models.Message{
-		ID:              uuid.New(),
-		Content:         req.Content,
-		SenderID:        &userID,
-		DMID:            &dmID,
-		ParentMessageID: req.ParentMessageID,
+		ID:       uuid.New(),
+		Content:  content,
+		SenderID: &userID,
+		DMID:     &dmID,
 	}
 
 	if err := s.messageRepo.Create(message); err != nil {
 		return nil, err
+	}
+
+	// Link attachments
+	for _, attachmentID := range attachmentIDs {
+		s.attachmentRepo.LinkToMessage(attachmentID, message.ID)
+	}
+
+	// Fetch attachments for the response
+	if len(attachmentIDs) > 0 {
+		attachments, _ := s.attachmentRepo.ListByMessageID(message.ID)
+		message.Attachments = []models.Attachment{}
+		for _, a := range attachments {
+			message.Attachments = append(message.Attachments, *a)
+		}
 	}
 
 	return message, nil
