@@ -1,0 +1,2 @@
+-- Remove search index
+DROP INDEX IF EXISTS idx_messages_content_search;

@@ -95,6 +95,8 @@ func main() {
 	reactionService := service.NewReactionService(reactionRepo, messageRepo, channelRepo, dmRepo, workspaceRepo)
 	fileService := service.NewFileService(attachmentRepo, storageService)
 	readService := service.NewReadReceiptService(channelRepo, dmRepo, hub)
+	searchService := service.NewSearchService(messageRepo, workspaceRepo)
+	userService := service.NewUserService(userRepo)
 
 	presenceService := service.NewPresenceService(userRepo, hub)
 
@@ -107,6 +109,8 @@ func main() {
 	reactionHandler := handler.NewReactionHandler(reactionService, messageService, hub)
 	fileHandler := handler.NewFileHandler(fileService)
 	readHandler := handler.NewReadReceiptHandler(readService)
+	searchHandler := handler.NewSearchHandler(searchService)
+	userHandler := handler.NewUserHandler(userService)
 	wsHandler := websocket.NewHandler(hub, jwtManager, presenceService)
 
 	// Create Gin router
@@ -221,6 +225,11 @@ func main() {
 	// Read Receipt routes
 	router.POST("/api/channels/:id/read", middleware.AuthMiddleware(jwtManager), readHandler.MarkChannelAsRead)
 	router.POST("/api/dms/:id/read", middleware.AuthMiddleware(jwtManager), readHandler.MarkDMAsRead)
+	router.GET("/api/workspaces/:id/search", middleware.AuthMiddleware(jwtManager), searchHandler.SearchInWorkspace)
+
+	// User routes
+	router.GET("/api/users/profile", middleware.AuthMiddleware(jwtManager), userHandler.GetProfile)
+	router.PUT("/api/users/profile", middleware.AuthMiddleware(jwtManager), userHandler.UpdateProfile)
 
 	// WebRTC signaling endpoint
 	router.GET("/webrtc/signaling", func(c *gin.Context) {
