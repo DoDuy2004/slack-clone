@@ -70,6 +70,7 @@ func main() {
 	channelRepo := repository.NewChannelRepository(db)
 	messageRepo := repository.NewMessageRepository(db)
 	dmRepo := repository.NewDMRepository(db)
+	reactionRepo := repository.NewReactionRepository(db)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, jwtManager)
@@ -77,6 +78,7 @@ func main() {
 	channelService := service.NewChannelService(channelRepo, workspaceRepo)
 	messageService := service.NewMessageService(messageRepo, channelRepo, workspaceRepo, dmRepo)
 	dmService := service.NewDMService(dmRepo, workspaceRepo, userRepo)
+	reactionService := service.NewReactionService(reactionRepo, messageRepo, channelRepo, dmRepo, workspaceRepo)
 
 	// Initialize WebSocket Hub
 	hub := websocket.NewHub()
@@ -90,6 +92,7 @@ func main() {
 	channelHandler := handler.NewChannelHandler(channelService)
 	messageHandler := handler.NewMessageHandler(messageService, hub) // Inject hub
 	dmHandler := handler.NewDMHandler(dmService)
+	reactionHandler := handler.NewReactionHandler(reactionService, messageService, hub)
 	wsHandler := websocket.NewHandler(hub, jwtManager, presenceService)
 
 	// Create Gin router
@@ -189,6 +192,10 @@ func main() {
 				messages.GET("/:id/thread", messageHandler.GetThread)
 				messages.PUT("/:id", messageHandler.Update)
 				messages.DELETE("/:id", messageHandler.Delete)
+
+				// Reaction routes
+				messages.POST("/:id/reactions", reactionHandler.Add)
+				messages.DELETE("/:id/reactions/:emoji", reactionHandler.Remove)
 			}
 		}
 	}

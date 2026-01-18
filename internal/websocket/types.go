@@ -15,6 +15,8 @@ const (
 	EventUserPresence    = "user.presence"
 	EventChannelJoined   = "channel.joined"
 	EventWorkspaceJoined = "workspace.joined"
+	EventReactionAdded   = "reaction.added"
+	EventReactionRemoved = "reaction.removed"
 )
 
 // WSMessage represents the structure of messages sent over WebSocket

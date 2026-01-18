@@ -59,6 +59,13 @@ func (r *postgresMessageRepository) FindByID(id uuid.UUID) (*models.Message, err
 	if err != nil {
 		return nil, err
 	}
+
+	// Attach reactions
+	messages := []*models.Message{m}
+	if err := r.attachReactions(messages); err != nil {
+		return nil, err
+	}
+
 	return m, nil
 }
 
@@ -104,6 +111,14 @@ func (r *postgresMessageRepository) ListByChannelID(channelID uuid.UUID, limit, 
 		}
 		messages = append(messages, m)
 	}
+
+	// Attach reactions to messages
+	if len(messages) > 0 {
+		if err := r.attachReactions(messages); err != nil {
+			return nil, err
+		}
+	}
+
 	return messages, nil
 }
 
@@ -149,7 +164,55 @@ func (r *postgresMessageRepository) ListByDMID(dmID uuid.UUID, limit, offset int
 		}
 		messages = append(messages, m)
 	}
+
+	// Attach reactions
+	if len(messages) > 0 {
+		if err := r.attachReactions(messages); err != nil {
+			return nil, err
+		}
+	}
+
 	return messages, nil
+}
+
+func (r *postgresMessageRepository) attachReactions(messages []*models.Message) error {
+	messageIDs := make([]uuid.UUID, len(messages))
+	msgMap := make(map[uuid.UUID]*models.Message)
+	for i, m := range messages {
+		messageIDs[i] = m.ID
+		msgMap[m.ID] = m
+		m.Reactions = []models.Reaction{} // Initialize
+	}
+
+	query := `
+		SELECT r.id, r.message_id, r.user_id, r.emoji, r.created_at,
+		       u.username, u.avatar_url, u.full_name
+		FROM reactions r
+		JOIN users u ON r.user_id = u.id
+		WHERE r.message_id = ANY($1)
+		ORDER BY r.created_at ASC
+	`
+	rows, err := r.db.Query(query, messageIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		re := models.Reaction{}
+		re.User = &models.User{}
+		if err := rows.Scan(
+			&re.ID, &re.MessageID, &re.UserID, &re.Emoji, &re.CreatedAt,
+			&re.User.Username, &re.User.AvatarURL, &re.User.FullName,
+		); err != nil {
+			return err
+		}
+		re.User.ID = re.UserID
+		if m, ok := msgMap[re.MessageID]; ok {
+			m.Reactions = append(m.Reactions, re)
+		}
+	}
+	return nil
 }
 
 func (r *postgresMessageRepository) ListReplies(parentID uuid.UUID) ([]*models.Message, error) {
@@ -192,6 +255,14 @@ func (r *postgresMessageRepository) ListReplies(parentID uuid.UUID) ([]*models.M
 		}
 		messages = append(messages, m)
 	}
+
+	// Attach reactions
+	if len(messages) > 0 {
+		if err := r.attachReactions(messages); err != nil {
+			return nil, err
+		}
+	}
+
 	return messages, nil
 }
 
