@@ -66,14 +66,17 @@ func main() {
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db)
 	workspaceRepo := repository.NewWorkspaceRepository(db)
+	channelRepo := repository.NewChannelRepository(db)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, jwtManager)
 	workspaceService := service.NewWorkspaceService(workspaceRepo)
+	channelService := service.NewChannelService(channelRepo, workspaceRepo)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService, cfg)
 	workspaceHandler := handler.NewWorkspaceHandler(workspaceService)
+	channelHandler := handler.NewChannelHandler(channelService)
 
 	// Create Gin router
 	router := gin.Default()
@@ -134,11 +137,19 @@ func main() {
 				workspaces.GET("/:id", workspaceHandler.Get)
 				workspaces.PUT("/:id", workspaceHandler.Update)
 				workspaces.DELETE("/:id", workspaceHandler.Delete)
+
+				// Channel routes within a workspace
+				workspaces.GET("/:workspace_id/channels", channelHandler.ListByWorkspace)
+				workspaces.POST("/:workspace_id/channels", channelHandler.Create)
 			}
 
-			// Channel routes
+			// Individual channel routes
 			channels := protected.Group("/channels")
 			{
+				channels.GET("/:id", channelHandler.Get)
+				channels.PUT("/:id", channelHandler.Update)
+				channels.DELETE("/:id", channelHandler.Delete)
+
 				channels.GET("/:id/messages", func(c *gin.Context) {
 					c.JSON(http.StatusOK, gin.H{"message": "Get messages - TODO"})
 				})
