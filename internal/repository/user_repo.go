@@ -14,6 +14,7 @@ type UserRepository interface {
 	FindByEmail(email string) (*models.User, error)
 	FindByID(id uuid.UUID) (*models.User, error)
 	Update(user *models.User) error
+	UpdateStatus(userID uuid.UUID, status string) error
 }
 
 type postgresUserRepository struct {
@@ -132,4 +133,14 @@ func (r *postgresUserRepository) Update(user *models.User) error {
 	}
 
 	return nil
+}
+
+func (r *postgresUserRepository) UpdateStatus(userID uuid.UUID, status string) error {
+	query := `
+		UPDATE users
+		SET status = $1, last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2
+	`
+	_, err := r.db.Exec(query, status, userID)
+	return err
 }

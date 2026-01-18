@@ -35,6 +35,8 @@ type Client struct {
 
 	// User ID associated with this client.
 	userID uuid.UUID
+
+	presence PresenceProvider
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -46,6 +48,9 @@ func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
+		if c.presence != nil {
+			c.presence.SetOffline(c.userID)
+		}
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))

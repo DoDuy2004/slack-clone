@@ -27,6 +27,12 @@ type WSMessage struct {
 	UserID      *uuid.UUID      `json:"user_id,omitempty"`
 }
 
+// PresenceProvider is an interface for managing user presence
+type PresenceProvider interface {
+	SetOnline(userID uuid.UUID) error
+	SetOffline(userID uuid.UUID) error
+}
+
 // TypingPayload represents the payload for typing indicators
 type TypingPayload struct {
 	UserID    uuid.UUID `json:"user_id"`

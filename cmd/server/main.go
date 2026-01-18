@@ -82,13 +82,15 @@ func main() {
 	hub := websocket.NewHub()
 	go hub.Run()
 
+	presenceService := service.NewPresenceService(userRepo, hub)
+
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService, cfg)
 	workspaceHandler := handler.NewWorkspaceHandler(workspaceService)
 	channelHandler := handler.NewChannelHandler(channelService)
 	messageHandler := handler.NewMessageHandler(messageService, hub) // Inject hub
 	dmHandler := handler.NewDMHandler(dmService)
-	wsHandler := websocket.NewHandler(hub, jwtManager)
+	wsHandler := websocket.NewHandler(hub, jwtManager, presenceService)
 
 	// Create Gin router
 	router := gin.Default()

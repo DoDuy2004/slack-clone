@@ -20,12 +20,14 @@ var upgrader = websocket.Upgrader{
 type Handler struct {
 	hub        *Hub
 	jwtManager *jwt.JWTManager
+	presence   PresenceProvider
 }
 
-func NewHandler(hub *Hub, jwtManager *jwt.JWTManager) *Handler {
+func NewHandler(hub *Hub, jwtManager *jwt.JWTManager, presence PresenceProvider) *Handler {
 	return &Handler{
 		hub:        hub,
 		jwtManager: jwtManager,
+		presence:   presence,
 	}
 }
 
@@ -59,16 +61,22 @@ func (h *Handler) ServeWS(c *gin.Context) {
 
 	// 3. Create Client
 	client := &Client{
-		hub:    h.hub,
-		conn:   conn,
-		send:   make(chan *WSMessage, 256),
-		userID: userID,
+		hub:      h.hub,
+		conn:     conn,
+		send:     make(chan *WSMessage, 256),
+		userID:   userID,
+		presence: h.presence,
 	}
 
 	// 4. Register client
 	client.hub.register <- client
 
-	// 5. Start pumps
+	// 5. Notify online
+	if h.presence != nil {
+		h.presence.SetOnline(userID)
+	}
+
+	// 6. Start pumps
 	go client.writePump()
 	go client.readPump()
 }
